@@ -75,6 +75,7 @@ def missing_values(original_data, method='omit',
     method : str, optional
         'omit' : remove rows containing NaN. Default.
         'mean' : replace NaN by the mean of its column.
+        'median' : replace NaN by the median of its column.
         'zeros' : replace NaN by 0.
         'change_and_add_flags' : replace NaN by the values specified in 
          supply_data at each corresponding columns. Then add new columns 
@@ -82,6 +83,7 @@ def missing_values(original_data, method='omit',
     supply_data : list of floats, optional
         values to replace NaN in each column. The default is 
         [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26].
+        'imputation' : fill in missing values by simple machine learning
 
     Returns
     -------
@@ -96,9 +98,18 @@ def missing_values(original_data, method='omit',
     elif method == 'mean':
         non_nan_data = original_data[~np.isnan(original_data).any(axis=1)]
         mean_row = np.mean(non_nan_data, axis=0)
-        for i_column in range(mean_row):
+        for i_column in range(len(mean_row)):
             original_data[:,i_column] = np.nan_to_num(original_data[:,i_column], 
                                                       nan=mean_row[i_column])
+            new_data = original_data
+            
+    elif method == 'median':
+        non_nan_data = original_data[~np.isnan(original_data).any(axis=1)]
+        median_row = np.median(non_nan_data, axis=0)
+        for i_column in range(len(median_row)):
+            original_data[:,i_column] = np.nan_to_num(original_data[:,i_column], 
+                                                      nan=median_row[i_column])
+            new_data = original_data
             
     elif method == 'zeros':
         new_data = np.nan_to_num(original_data, nan=0.0)
@@ -110,8 +121,18 @@ def missing_values(original_data, method='omit',
             mask = np.ma.masked_invalid(original_data[:,i_column]).mask
             new_column[mask] = 1
             if np.sum(new_column) != 0:
+                new_column = np.expand_dims(new_column, axis=0)
                 new_column = new_column.transpose()
                 np.append(original_data,new_column,axis=1)
                 original_data[:,i_column] = np.nan_to_num(original_data[:,i_column], 
                                                       nan=supply_data[i_column])
+                new_data = original_data
+                
+    elif method == 'imputation':
+        # to do
+        pass
+    
+    else: 
+        print('Invalid option for treating missing data.')
+    
     return new_data

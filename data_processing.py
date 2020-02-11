@@ -123,7 +123,7 @@ def missing_values(original_data, method='omit',
             if np.sum(new_column) != 0:
                 new_column = np.expand_dims(new_column, axis=0)
                 new_column = new_column.transpose()
-                np.append(original_data,new_column,axis=1)
+                original_data = np.insert(original_data, [-1], new_column, axis=1)
                 original_data[:,i_column] = np.nan_to_num(original_data[:,i_column], 
                                                       nan=supply_data[i_column])
                 new_data = original_data

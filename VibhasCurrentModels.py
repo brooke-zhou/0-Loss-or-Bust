@@ -7,9 +7,16 @@ from sklearn.naive_bayes import GaussianNB, MultinomialNB, ComplementNB, Bernoul
 from sklearn import preprocessing, svm, linear_model, cluster
 from sklearn.ensemble import ExtraTreesClassifier
 import lightgbm as lgb
+from sklearn.model_selection import KFold
+from sklearn.metrics import roc_auc_score
+from data_processing import missing_values
+
+import csv
 
 # Needs further tinkering with
 # https://xgboost.readthedocs.io/en/latest/parameter.html
+# This model might currently be overfitting, but it should
+# be a really good boosting algorithm.
 def xgboost(dtrain, dtest):
     labels = dtrain[:, -1]
     dtrain = dtrain[:, :-1]
@@ -17,8 +24,8 @@ def xgboost(dtrain, dtest):
 
     dtest = xgb.DMatrix(dtest)
     # specify parameters via map
-    param = {'max_depth':2, 'eta':1, 'objective':'binary:logistic' }
-    num_round = 2
+    param = {'max_depth':6, 'normalize_type':'forest','objective':'binary:logistic' , 'eval_metric':'auc'}
+    num_round = 10
     bst = xgb.train(param, dtrain, num_round)
     # make prediction
     preds = bst.predict(dtest)
@@ -104,7 +111,7 @@ def sgdClassifier(dtrain, dtest):
 # Standard sklearn linearSVC
 # didn't converge
 def linearSVC(dtrain, dtest):
-    clf = svm.LinearSVC()
+    clf = svm.LinearSVC(C=np.exp(-9))
     clf.fit(dtrain[:, :-1], dtrain[:, -1])
     return clf.predict(dtest)
 
@@ -120,12 +127,12 @@ def linReg(dtrain, dtest):
     clf = linear_model.LinearRegression().fit(dtrain[:, :-1], dtrain[:, -1])
     return clf.predict(dtest)
 
-# Standard sklearn logistric regression
+# Standard sklearn logistic regression
 def logReg(dtrain, dtest):
     clf = linear_model.LogisticRegression().fit(dtrain[:, :-1], dtrain[:, -1])
     return clf.predict(dtest)
 
-# sklearn extratrees
+# sklearn extratrees - I might play with this.
 def extraTrees(dtrain, dtest):
     clf = ExtraTreesClassifier()
     clf.fit(dtrain[:, :-1], dtrain[:, -1])
@@ -133,36 +140,129 @@ def extraTrees(dtrain, dtest):
 
 # MSFT's open source lightgbm - note: seems to produce
 # similar results to xgboost
+""" So far, lightgbm has produced the most optimal results as """
+""" far as I can tell. It's a boosting algorithm, I think. """
+# https://lightgbm.readthedocs.io/en/latest/Parameters.html
 def lightgbm(dtrain, dtest):
     train_data = lgb.Dataset(dtrain[:, :-1], label=dtrain[:, -1])
-    param = {'num_leaves': 31, 'objective': 'binary'}
+    param = {'num_leaves': 80, 'max_depth':7,'objective': 'binary', 'learning_rate':0.01}
     param['metric'] = 'auc'
-    num_round = 10
+    num_round = 100
     # separate command for k-fold cross validation:lgb.cv(...)
     bst = lgb.train(param, train_data, num_round)
     return bst.predict(dtest)
 
+""" This imitates the test metric we will be judged on, the """
+""" roc_auc metric. Cross validation is used for this.  """
+def testNative(dtrain):
+    # only test open source and linear
+    # Initialize kfold cross-validation object with 10 folds:
+    num_folds = 10
+    kf = KFold(n_splits=num_folds)
+    # Iterate through cross-validation folds:
+    i = 1
+    errors = [0, 0, 0, 0, 0, 0, 0]
+    for train_index, test_index in kf.split(dtrain):
+        # Print out test indices:
+        print('Fold ', i, ' of ', num_folds, ' test indices:', test_index)
 
+        # Training and testing data points for this fold:
+        train, x_test = dtrain[train_index], dtrain[test_index]
+        x_test, y_test = dtrain[:, :-1], dtrain[:, -1]
+        yXGB = xgboost(train, x_test)
+        yLin = linReg(train, x_test)
+        yLight = lightgbm(train, x_test)
+        yXGBErr = roc_auc_score(y_test, yXGB)
+        yLinErr = roc_auc_score(y_test, yLin)
+        yLightErr = roc_auc_score(y_test, yLight)
+        xgbLinErr = roc_auc_score(y_test, (yXGB + yLin)/2)
+        linLight = roc_auc_score(y_test, (yLight + yLin)/2)
+        xgbLight = roc_auc_score(y_test, (yXGB + yLight)/2)
+        errors[0] = errors[0] + yXGBErr
+        errors[1] = errors[1] + yLinErr
+        errors[2] = errors[2] + yLightErr
+        errors[3] = errors[3] + xgbLinErr
+        errors[4] = errors[4] + linLight
+        errors[5] = errors[5] + xgbLight
+        errors[6] = errors[6] + roc_auc_score(y_test, (yXGB + yLight + yLin)/3)
+
+
+
+        i += 1
+    print("XGB SCORE: " + str(errors[0]/10))
+    print("Lin SCORE: " + str(errors[1]/10))
+    print("LightGBM SCORE: " + str(errors[2]/10))
+    print("1 and 2 SCORE: " + str(errors[3] / 10))
+    print("2 and 3 SCORE: " + str(errors[4] / 10))
+    print("1 and 3 SCORE: " + str(errors[5] / 10))
+    print("all SCORE: " + str(errors[6] / 10))
+
+    #print(xgboost(dtrain, dtest))
+
+    #print(gaussianNaiveBayes(dtrain, dtest))
+
+    #print(multinomialNaiveBayes(dtrain, dtest))
+
+    #print(complementNaiveBayes(dtrain, dtest))
+
+    #print(bernoulliNaiveBayes(dtrain, dtest))
+
+    # doesn't work
+    # print(categoricalNaiveBayes(dtrain, dtest))
+
+    # Didn't converge one of two trials
+    # print(sgdClassifier(dtrain, dtest))
+
+    # didn't converge
+    # print(linearSVC(dtrain, dtest))
+
+    #print(linReg(dtrain, dtest))
+
+    #print(logReg(dtrain, dtest))
+
+    #print(extraTrees(dtrain, dtest))
+
+    #print(lightgbm(dtrain, dtest))
+
+
+""" The main engine that runs everything """
 if __name__ == "__main__":
     df_train = pd.read_csv('../train.csv', index_col=0)
     df_test = pd.read_csv('../test.csv', index_col=0)
 
-    df_test = df_test.dropna()
-    df_train = df_train.dropna()
+    #df_test = df_test.dropna()
+    #df_train = df_train.dropna()
     # don't need labels
-    dtrain = df_train.values[1:]
-    print(len(dtrain))
-    dtest = df_test.values[1:]
+    dtrain = df_train.values
+    dtrain = missing_values(dtrain, method="mean")
+    print(dtrain)
+    dtest = df_test.values
+    dtest = missing_values(dtest, method="mean")
+    #print(dtest)
+    #indices = df_test['id']
+    #testNative(dtrain)
+    yres = lightgbm(dtrain, dtest)
+    #print(indices)
+    #print(yres)
+    indices = range(len(dtrain), len(dtrain) + len(dtest))
+    print(indices)
+    print(len(indices))
+    df = pd.DataFrame({'id': indices, 'Predicted': yres})
+    #print(df['id'])
+    #print(df['Predicted'])
+    df.to_csv("submission.csv", index=False)
 
-    print(xgboost(dtrain, dtest))
+    #df.to_csv('submission.csv')
+    #with open('submission.csv', 'w', newline='') as csvfile:
 
-    print(gaussianNaiveBayes(dtrain, dtest))
 
-    print(multinomialNaiveBayes(dtrain, dtest))
+    #print(gaussianNaiveBayes(dtrain, dtest))
 
-    print(complementNaiveBayes(dtrain, dtest))
+    #print(multinomialNaiveBayes(dtrain, dtest))
 
-    print(bernoulliNaiveBayes(dtrain, dtest))
+    #print(complementNaiveBayes(dtrain, dtest))
+
+    #print(bernoulliNaiveBayes(dtrain, dtest))
 
     # doesn't work
     #print(categoricalNaiveBayes(dtrain, dtest))
@@ -173,10 +273,10 @@ if __name__ == "__main__":
     # didn't converge
     # print(linearSVC(dtrain, dtest))
 
-    print(linReg(dtrain, dtest))
+    #print(linReg(dtrain, dtest))
 
-    print(logReg(dtrain, dtest))
+    #print(logReg(dtrain, dtest))
 
-    print(extraTrees(dtrain, dtest))
+    #print(extraTrees(dtrain, dtest))
 
-    print(lightgbm(dtrain, dtest))
+    #print(lightgbm(dtrain, dtest))

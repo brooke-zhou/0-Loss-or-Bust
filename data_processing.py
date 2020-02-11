@@ -1,6 +1,6 @@
 import numpy as np
 
-def split_data(data_file_name='../data/train.csv', 
+def split_data(npy_data_file = '', data_file_name='../data/train.csv', 
                train_portion=0.8, split_mode='random', save='npy'):
     """
     Split original data into training and testing sets. 
@@ -28,7 +28,12 @@ def split_data(data_file_name='../data/train.csv',
     test_set : numpy array of size (test_set, 1)
 
     """
-    all_data = np.genfromtxt(data_file_name, delimiter = ',')
+    
+    if len(npy_data_file) == 0:
+        all_data = np.genfromtxt(data_file_name, delimiter = ',',skip_header=1)
+    else:
+        all_data = np.load(npy_data_file)
+        
     data_size = len(all_data)
     train_size = round(data_size*train_portion)
     train_mask = np.full(data_size, False)
@@ -136,3 +141,32 @@ def missing_values(original_data, method='omit',
         print('Invalid option for treating missing data.')
     
     return new_data
+
+def gen_submission(clf, test_data_npy='../data/clean_test.npy'):
+    """
+    Generate submission file from trained classifier.
+
+    Parameters
+    ----------
+    clf : a sklearn classifier
+        the trained model.
+    test_data_npy : str, optional
+        The file name of test_data in .npy format. Default '../data/test.npy'.
+
+    Returns
+    -------
+    None.
+
+    """
+    test_data = np.load(test_data_npy)
+    y_predict = clf.predict_proba(test_data)
+    y_predict = np.expand_dims(y_predict[:,1], axis=0)
+    y_predict = y_predict.transpose()
+    data_id = test_data[:,0]
+    data_id = np.expand_dims(data_id, axis=0)
+    data_id = data_id.transpose()
+    output_data = np.append(data_id, y_predict, axis=1)
+    np.savetxt('../data/submit.csv', output_data, 
+               header='id,Predicted', comments='',
+               fmt= '%i, %.17f' ,delimiter=',')
+    

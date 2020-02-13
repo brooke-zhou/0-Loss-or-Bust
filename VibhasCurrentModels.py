@@ -5,12 +5,13 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, ComplementNB, BernoulliNB, CategoricalNB
 from sklearn import preprocessing, svm, linear_model, cluster
-from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.ensemble import ExtraTreesClassifier, GradientBoostingClassifier
 import lightgbm as lgb
 from sklearn.model_selection import KFold
 from sklearn.metrics import roc_auc_score
 import statistics
 from Ensemble_Attempts import get_trans_data
+import random
 
 #from numba import jit
 from data_processing import missing_values
@@ -799,8 +800,10 @@ if __name__ == "__main__":
     dtest = df_test.values
 
     # normalize/scale data
+    # try shuffling
     dtrain = get_trans_data(dtrain)
     dtrain = np.array([dtrain[i] + [labels[i]] for i in range(len(dtrain))])
+    #random.shuffle(dtrain)
     dtest = np.array(list(get_trans_data(dtest)))
 
     # This was me testing all feasible parameters.
@@ -847,11 +850,11 @@ if __name__ == "__main__":
     # to reduce over-fitting
     dartXGB['booster'] = 'dart'
     # Sample type is weighted
-    dartXGB['type'] = 'weighted'
+    dartXGB['sample_type'] = 'weighted'
     # Normalize algorithm is tree as it seemed to
     # empirically do well, though it's a possibility that
     # in theory forest would do better.
-    dartXGB['normalize_type'] = 'tree'
+    dartXGB['normalize_type'] = 'forest'
     # Dropout rate to avoid overfitting
     dartXGB['rate_drop'] = 0.1
 
@@ -868,6 +871,7 @@ if __name__ == "__main__":
     # Randomly select part of features before
     # training each tree.
     regLight['feature_fraction'] = 0.5
+    regLight['num_leaves'] = 70
 
     # Random forest, with 0.1 samples bagged/randomly
     # selected, for each iteration.
@@ -883,19 +887,34 @@ if __name__ == "__main__":
 
 
     # This is to test blending
-    for i in [10, 6, 3]:
-        testBlend(dtrain, num_folds=i, xgbParams=[defaultXGB], lightgbmParams=[regLight, rf, dartL, goss])
+    #for i in [10, 6, 3]:
+    #    testBlend(dtrain, num_folds=i, xgbParams=[defaultXGB], lightgbmParams=[regLight, rf, dartL, goss])
 
     # Here is actual code to generate the data
     # with the ideal blending/model necessary.
+    #print("GBC...")
+    #random_state = 54321
+    #model1 = GradientBoostingClassifier(random_state=random_state)
+    #model1.fit(dtrain[:, :-1], labels)
+    #gbRes = model1.predict(dtest)
+    print("Starting...")
     xgbResult = xgboost(dtrain, dtest, param = defaultXGB)
-    #xgbDart = xgboost(dtrain, dtest, param = defaultXGB)
+    print("XGBoost done...")
+    xgbDart = xgboost(dtrain, dtest, param = dartXGB)
+    print("XGBoost dart done...")
     regResult = lightgbm(dtrain, dtest, param=regLight)
-    rfResult = lightgbm(dtrain, dtest, param=rf)
-    dartLight = lightgbm(dtrain, dtest, param=dartL)
-    gossRes = lightgbm(dtrain, dtest, param=goss)
 
-    yres = (regResult + xgbResult) / 2
+
+    print("LightGBM done...")
+    #rfResult = lightgbm(dtrain, dtest, param=rf)
+    print("RF  done...")
+    #dartLight = lightgbm(dtrain, dtest, param=dartL)
+    print("LightGBM dart done...")
+    #gossRes = lightgbm(dtrain, dtest, param=goss)
+    print("Goss done...")
+
+    #yres = regResult
+    yres = (xgbResult + xgbDart + regResult)/3
 
     df = pd.DataFrame({'id': indices, 'Predicted': yres})
 

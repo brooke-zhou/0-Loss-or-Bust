@@ -26,3 +26,4 @@ top_corr_features = corrmat.index
 #plot heat map
 plt.figure(figsize=(20,20))
 g=sns.heatmap(data[top_corr_features].corr(),annot=True,cmap="RdYlGn")
+plt.savefig('heatmap.png')
